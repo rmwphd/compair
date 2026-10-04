@@ -1,0 +1,73 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="note" style="margin-bottom:16px">
+  Ask only non-identifying questions. <strong>Choice</strong> and <strong>number</strong> questions can be used to group results
+  (numbers are grouped into the bins you define, e.g. age 18 25 35 50 65 → &lt;18, 18–24, 25–34, 35–49, 50–64, 65+). Free-text answers are exported but never used for grouping.
+</div>
+<div class="card">
+  <h2>Questions</h2>
+  {% if questions %}
+  <div class="table-wrap">
+  <table class="t">
+    <thead><tr><th>Question</th><th>Type</th><th>Groups</th><th class="num">Answers</th><th></th></tr></thead>
+    <tbody>
+    {% for q in questions %}
+      <tr>
+        <td><strong>{{ q.label }}</strong> {% if q.required %}<span class="badge">required</span>{% endif %}<div class="muted small mono">{{ q.key }}</div>
+          <details class="edit"><summary>edit</summary>
+            <form method="post" action="/admin/surveys/{{ survey.id }}/demographics/{{ q.id }}/edit" class="stack">
+              <input type="text" name="label" value="{{ q.label }}" required>
+              {% if q.type == 'choice' %}<textarea name="options" rows="4">{{ (q.options_json | fromjson) | join('\n') }}</textarea>{% endif %}
+              {% if q.type == 'number' %}<input type="text" name="bins" value="{{ (q.bins_json | fromjson) | join(' ') }}" placeholder="Bin edges, e.g. 18 25 35 50 65">{% endif %}
+              <label class="inline"><input type="checkbox" name="required" {% if q.required %}checked{% endif %}> Required</label>
+              <button class="btn small primary">Save</button>
+            </form>
+          </details>
+        </td>
+        <td>{{ q.type }}</td>
+        <td class="small">
+          {% if q.type == 'choice' %}{{ (q.options_json | fromjson) | join(', ') }}
+          {% elif q.type == 'number' %}{{ bin_labels[q.id] | join(', ') or '— (add bins to group)' }}
+          {% else %}<span class="muted">not groupable</span>{% endif %}
+        </td>
+        <td class="num">{{ answered.get(q.id, 0) }}</td>
+        <td style="white-space:nowrap;text-align:right">
+          <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/demographics/{{ q.id }}/move"><input type="hidden" name="dir" value="up"><button class="btn small" title="Move up" {% if loop.first %}disabled{% endif %}>↑</button></form>
+          <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/demographics/{{ q.id }}/move"><input type="hidden" name="dir" value="down"><button class="btn small" title="Move down" {% if loop.last %}disabled{% endif %}>↓</button></form>
+          <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/demographics/{{ q.id }}/delete"><button class="btn small danger" title="Deletes the question and its answers">Delete</button></form>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="muted">No questions yet. Participants go straight to the comparisons.</p>{% endif %}
+</div>
+
+<form class="card" method="post" action="/admin/surveys/{{ survey.id }}/demographics/add" id="addq">
+  <h2>Add a question</h2>
+  <div class="grid2">
+    <div class="field"><label for="ql">Question</label><input id="ql" type="text" name="label" placeholder="e.g. Age" required></div>
+    <div class="field"><label for="qt">Type</label>
+      <select id="qt" name="type">
+        <option value="choice">Choice (dropdown)</option>
+        <option value="number">Number (grouped into bins)</option>
+        <option value="text">Free text (not groupable)</option>
+      </select></div>
+  </div>
+  <div class="field" data-for="choice"><label for="qo">Options, one per line</label>
+    <textarea id="qo" name="options" rows="5" placeholder="Under 25&#10;25–44&#10;45–64&#10;65+&#10;Prefer not to say"></textarea></div>
+  <div class="field" data-for="number" hidden><label for="qb">Bin edges</label>
+    <input id="qb" type="text" name="bins" placeholder="18 25 35 50 65">
+    <div class="hint">Space-separated ascending numbers. Values are bucketed as &lt;first, [edge, next edge), …, last+.</div></div>
+  <label class="inline"><input type="checkbox" name="required"> Required</label>
+  <div style="margin-top:12px"><button class="btn primary" type="submit">Add question</button></div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  const sel = document.getElementById("qt");
+  const sync = () => document.querySelectorAll("#addq [data-for]").forEach(el => el.hidden = el.dataset.for !== sel.value);
+  sel.addEventListener("change", sync); sync();
+</script>
+{% endblock %}

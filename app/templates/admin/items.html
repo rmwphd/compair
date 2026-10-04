@@ -1,0 +1,55 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="grid2">
+  <form class="card" method="post" action="/admin/surveys/{{ survey.id }}/items/add">
+    <h2>Add items</h2>
+    <div class="field"><textarea name="lines" rows="7" placeholder="One item per line.&#10;Optionally add a description after a pipe:&#10;Pepperoni | classic cured sausage&#10;Pineapple"></textarea></div>
+    <button class="btn primary" type="submit">Add</button>
+    <span class="hint">Duplicates (case-insensitive) are skipped.</span>
+  </form>
+  <form class="card" method="post" action="/admin/surveys/{{ survey.id }}/items/upload" enctype="multipart/form-data">
+    <h2>Import CSV</h2>
+    <p class="muted small">Columns: <code>label</code>, optional <code>description</code>. A header row is detected automatically.</p>
+    <div class="field"><input type="file" name="file" accept=".csv,text/csv" required></div>
+    <button class="btn" type="submit">Upload</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="row spread">
+    <h2 style="margin:0">{{ n_active }} active of {{ n_total }} items <span class="muted small">· {{ (n_active * (n_active - 1) // 2) }} possible pairs</span></h2>
+    <form method="get" class="row"><input type="search" name="q" value="{{ q }}" placeholder="Search items" style="width:200px"></form>
+  </div>
+  <div class="table-wrap">
+  <table class="t">
+    <thead><tr><th>Item</th><th class="num">Answers</th><th></th></tr></thead>
+    <tbody>
+    {% for it in items %}
+      <tr class="{{ '' if it.active else 'inactive' }}">
+        <td>
+          <strong>{{ it.label }}</strong>{% if it.description %}<div class="muted small">{{ it.description }}</div>{% endif %}
+          <details class="edit"><summary>edit</summary>
+            <form method="post" action="/admin/surveys/{{ survey.id }}/items/{{ it.id }}/edit" class="stack">
+              <input type="text" name="label" value="{{ it.label }}" required>
+              <input type="text" name="description" value="{{ it.description }}" placeholder="Description (optional)">
+              <button class="btn small primary">Save</button>
+            </form>
+          </details>
+        </td>
+        <td class="num">{{ it.n }}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/items/{{ it.id }}/toggle">
+            <button class="btn small">{{ 'Deactivate' if it.active else 'Activate' }}</button></form>
+          {% if not it.n %}<form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/items/{{ it.id }}/delete">
+            <button class="btn small danger">Delete</button></form>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="muted">No items{% if q %} match “{{ q }}”{% endif %}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="hint">Inactive items are never shown to new participants but their past answers stay in the data.</p>
+</div>
+{% endblock %}

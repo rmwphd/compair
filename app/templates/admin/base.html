@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>{% block title %}CompAIR admin{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap">
+  <a class="brand" href="/admin">Comp<span>AIR</span></a>
+  {% block topright %}
+  <div class="row">
+    <a class="btn small" href="/admin/backup.db" title="Download a consistent snapshot of the whole database">Backup DB</a>
+    <form class="inline" method="post" action="/admin/logout"><button class="btn small">Log out</button></form>
+  </div>
+  {% endblock %}
+</div></header>
+<main class="wrap">
+{% if msg %}<div class="flash" role="status">{{ msg }}</div>{% endif %}
+{% if survey is defined and tabs is defined %}
+  <div class="row spread">
+    <div>
+      <h1 style="margin:0">{{ survey.title }} <span class="badge {{ survey.status }}">{{ survey.status }}</span></h1>
+    </div>
+    <div class="row">
+      <a class="btn small" href="/s/{{ survey.slug }}" target="_blank" rel="noopener">{% if survey.status == 'draft' %}Preview{% else %}Open survey{% endif %} ↗</a>
+      <a class="btn small" href="/admin/surveys/{{ survey.id }}/export.zip">Export ZIP</a>
+    </div>
+  </div>
+  <nav class="tabs">
+    {% for key, name in tabs %}
+      <a href="/admin/surveys/{{ survey.id }}{% if key != 'settings' %}/{{ key }}{% endif %}" class="{{ 'on' if key == tab }}">{{ name }}</a>
+    {% endfor %}
+  </nav>
+{% endif %}
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% block topright %}{% endblock %}
+{% block content %}
+<div class="card narrow" style="margin:40px auto">
+  <h1>Admin login</h1>
+  {% if not configured %}
+    <div class="errors">No admin password is configured. Set the <code>ADMIN_PASSWORD</code> environment variable and restart.</div>
+  {% endif %}
+  {% if error %}<div class="errors">{{ error }}</div>{% endif %}
+  <form method="post" action="/admin/login">
+    <input type="hidden" name="next" value="{{ next }}">
+    <div class="field"><label for="pw">Password</label><input id="pw" type="password" name="password" autofocus autocomplete="current-password"></div>
+    <button class="btn primary" type="submit">Log in</button>
+  </form>
+</div>
+{% endblock %}

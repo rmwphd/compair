@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card done-box">
+  <h1>{{ survey.title }}</h1>
+  <p>{% if survey.status == "draft" %}This survey hasn’t opened yet.{% else %}This survey is closed. Thanks for your interest!{% endif %}</p>
+</div>
+{% endblock %}

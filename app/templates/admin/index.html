@@ -1,0 +1,29 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row spread"><h1>Surveys</h1></div>
+<form class="card row" method="post" action="/admin/surveys">
+  <div style="flex:1;min-width:220px"><input type="text" name="title" placeholder="New survey title, e.g. “Best pizza toppings”" required></div>
+  <button class="btn primary" type="submit">Create survey</button>
+</form>
+{% if surveys %}
+<div class="card table-wrap">
+<table class="t">
+  <thead><tr><th>Survey</th><th>Status</th><th class="num">Items</th><th class="num">Participants</th><th class="num">Answers</th><th>Link</th></tr></thead>
+  <tbody>
+  {% for s in surveys %}
+    <tr>
+      <td><a href="/admin/surveys/{{ s.id }}"><strong>{{ s.title }}</strong></a></td>
+      <td><span class="badge {{ s.status }}">{{ s.status }}</span></td>
+      <td class="num">{{ s.n_items }}</td>
+      <td class="num">{{ s.n_participants }}</td>
+      <td class="num">{{ s.n_answers }}</td>
+      <td><code>/s/{{ s.slug }}</code></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No surveys yet. Create one above.</p>
+{% endif %}
+{% endblock %}

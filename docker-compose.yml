@@ -1,0 +1,29 @@
+# CompAIR on a Synology NAS (Container Manager → Project → Create → point at this folder),
+# or anywhere with `docker compose up -d`.
+services:
+  compair:
+    build: .
+    image: compair:latest
+    container_name: compair
+    restart: unless-stopped
+    ports:
+      - "8000:8000"            # http://<nas-ip>:8000/admin on your LAN
+    env_file: .env             # ADMIN_PASSWORD, SECRET_KEY, ... (copy .env.example)
+    volumes:
+      # Synology: create /volume1/docker/compair/data first. Elsewhere use e.g. ./data:/data
+      - ${DATA_PATH:-/volume1/docker/compair/data}:/data
+    user: "${PUID:-1000}:${PGID:-1000}"
+
+  # Optional: public HTTPS URL via Cloudflare Tunnel (free, no router port-forwarding).
+  # 1. Cloudflare Zero Trust → Networks → Tunnels → Create tunnel → copy the token.
+  # 2. Add a Public Hostname: e.g. survey.yourdomain.com → http://compair:8000
+  # 3. Put TUNNEL_TOKEN in .env, then: docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: compair-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
+    depends_on: [compair]
+    profiles: [tunnel]

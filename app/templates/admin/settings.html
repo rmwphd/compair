@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="card">
+  <h2>Share</h2>
+  <div class="copy"><input type="text" id="pub" value="{{ public_url }}" readonly>
+    <button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('pub').value).then(()=>this.textContent='Copied')">Copy</button></div>
+  <p class="hint">The link only works while the survey is <strong>open</strong>. In draft, you (logged in) can preview it.</p>
+  <div class="row" style="margin-top:12px">
+    {% for st, label in [('draft','Back to draft'),('open','Open survey'),('closed','Close survey')] if st != survey.status %}
+      <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/status">
+        <input type="hidden" name="status" value="{{ st }}">
+        <button class="btn {{ 'primary' if st == 'open' }}">{{ label }}</button>
+      </form>
+    {% endfor %}
+    <form class="inline" method="post" action="/admin/surveys/{{ survey.id }}/duplicate"><button class="btn">Duplicate</button></form>
+  </div>
+</div>
+
+<form class="card" method="post" action="/admin/surveys/{{ survey.id }}/settings">
+  <h2>Settings</h2>
+  <div class="grid2">
+    <div class="field"><label for="title">Title</label><input id="title" type="text" name="title" value="{{ survey.title }}" required></div>
+    <div class="field"><label for="slug">Link name</label><input id="slug" type="text" name="slug" value="{{ survey.slug }}" pattern="[a-z0-9-]+" required>
+      <div class="hint">Lowercase letters, numbers and dashes. Appears as /s/<em>link-name</em>.</div></div>
+  </div>
+  <div class="field"><label for="prompt">Question shown above each pair</label><input id="prompt" type="text" name="prompt" value="{{ survey.prompt }}"></div>
+  <div class="grid2">
+    <div class="field">
+      <label for="ppp">Pairs per participant</label>
+      <input id="ppp" type="number" min="1" name="pairs_per_participant" value="{{ survey.pairs_per_participant or 20 }}">
+      <label class="inline" style="margin-top:6px"><input type="checkbox" name="unlimited" {% if not survey.pairs_per_participant %}checked{% endif %}> Unlimited (participant decides when to stop)</label>
+    </div>
+    <div class="field">
+      <label>Response options</label>
+      <label class="inline"><input type="checkbox" name="allow_tie" {% if survey.allow_tie %}checked{% endif %}> Allow “equal / can’t choose” (tie)</label><br>
+      <label class="inline"><input type="checkbox" name="allow_skip" {% if survey.allow_skip %}checked{% endif %}> Allow “skip / don’t know”</label>
+      <div class="hint">Ties enter the model as ties (Davidson). Skips are recorded but don’t affect rankings. Skips count toward the pair limit.</div>
+    </div>
+  </div>
+  <div class="field"><label for="intro">Intro text (Markdown)</label><textarea id="intro" name="intro_md" placeholder="Shown on the first page.">{{ survey.intro_md }}</textarea></div>
+  <div class="field"><label for="consent">Consent text (Markdown, optional)</label><textarea id="consent" name="consent_md" placeholder="If set, the start button reads “I agree, start”.">{{ survey.consent_md }}</textarea></div>
+  <button class="btn primary" type="submit">Save settings</button>
+</form>
+
+<div class="card danger-zone">
+  <h2>Danger zone</h2>
+  <p class="muted small">This survey has {{ n_participants }} participant(s). Type <code>{{ survey.slug }}</code> to confirm either action.</p>
+  <div class="grid2">
+    <form method="post" action="/admin/surveys/{{ survey.id }}/reset" class="row">
+      <input type="text" name="confirm" placeholder="{{ survey.slug }}" style="flex:1" autocomplete="off">
+      <button class="btn danger">Delete all responses</button>
+    </form>
+    <form method="post" action="/admin/surveys/{{ survey.id }}/delete" class="row">
+      <input type="text" name="confirm" placeholder="{{ survey.slug }}" style="flex:1" autocomplete="off">
+      <button class="btn danger">Delete survey</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

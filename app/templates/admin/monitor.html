@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="stats">
+  <div class="stat"><div class="v">{{ stats.participants }}</div><div class="l">participants started</div></div>
+  <div class="stat"><div class="v">{{ stats.demo_done }}</div><div class="l">completed demographics</div></div>
+  <div class="stat"><div class="v">{{ stats.finished }}</div><div class="l">finished</div></div>
+  <div class="stat"><div class="v">{{ stats.answered }}</div><div class="l">answered comparisons</div></div>
+  <div class="stat"><div class="v">{{ stats.flagged }}</div><div class="l">flagged participants</div></div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <h2>Responses</h2>
+    <table class="t">
+      {% for k in ['left','right','tie','skip','pending'] %}<tr><td>{{ k }}</td><td class="num">{{ stats.outcomes.get(k, 0) }}</td></tr>{% endfor %}
+      <tr><td>left share (of left+right)</td><td class="num">{{ '%.1f' % (100 * stats.left_share) }}%</td></tr>
+      <tr><td>median response time</td><td class="num">{{ '%.1f s' % (stats.median_ms / 1000) if stats.median_ms else '—' }}</td></tr>
+    </table>
+    <p class="hint">Left share far from 50% suggests position bias; sides are randomised so it should even out.</p>
+  </div>
+  <div class="card">
+    <h2>Coverage</h2>
+    <p>Answers per active item: min <strong>{{ stats.item_min }}</strong> · median <strong>{{ stats.item_median }}</strong> · max <strong>{{ stats.item_max }}</strong></p>
+    <p class="hint">Aim for at least ~10 answers per item overall and per subgroup you care about before trusting rankings. The pair selector keeps these even.</p>
+    {% if stats.least_seen %}<h3>Least-seen items</h3>
+    <ul class="small">{% for r in stats.least_seen %}<li>{{ r.label }}: {{ r.n }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</div>
+<div class="card">
+  <h2>Quality flags</h2>
+  <p class="muted small">A participant with ≥10 answers is flagged when their median response is under 400 ms or they chose the same side over 95% of the time. Flagged participants are excluded from results by default (toggle on the Results tab).</p>
+  {% if stats.flag_table %}
+  <div class="table-wrap"><table class="t">
+    <thead><tr><th>Participant</th><th class="num">Answers</th><th class="num">Median ms</th><th class="num">Left share</th></tr></thead>
+    {% for r in stats.flag_table %}<tr><td class="mono">{{ r.participant_id[:8] }}…</td><td class="num">{{ r.answers }}</td><td class="num">{{ r.median_ms | int }}</td><td class="num">{{ '%.0f' % (100 * r.left_share) }}%</td></tr>{% endfor %}
+  </table></div>
+  {% else %}<p>No flagged participants.</p>{% endif %}
+</div>
+{% endblock %}

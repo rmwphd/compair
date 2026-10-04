@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<form class="controls card" id="controls" data-survey="{{ survey.id }}">
+  <div class="field"><label for="g1">Group by</label>
+    <select id="g1" name="group"><option value="">— everyone —</option>
+      {% for f in fields %}<option value="{{ f.key }}">{{ f.label }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="g2">then by</label>
+    <select id="g2" name="group"><option value="">—</option>
+      {% for f in fields %}<option value="{{ f.key }}">{{ f.label }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="flt">Only include</label>
+    <select id="flt" name="filter"><option value="">all participants</option>
+      {% for f in fields %}<optgroup label="{{ f.label }}">
+        {% for v in f["values"] %}<option value="{{ f.key }}:{{ v }}">{{ v }}</option>{% endfor %}
+      </optgroup>{% endfor %}</select></div>
+  <div class="field" style="min-width:110px"><label for="min">Min / group</label>
+    <input id="min" name="min" type="number" min="1" value="10" title="Groups with fewer participants are shown as insufficient"></div>
+  <div class="field" style="min-width:120px"><label for="boot">Bootstrap</label>
+    <select id="boot" name="boot"><option value="0">off (fast)</option><option value="50">50 draws</option>
+      <option value="100" selected>100 draws</option><option value="200">200 draws</option></select></div>
+  <div class="field" style="min-width:140px"><label for="ties">Ties</label>
+    <select id="ties" name="ties"><option value="davidson">Davidson model</option><option value="half">½ win each</option></select></div>
+  <label class="inline"><input type="checkbox" id="exf" name="exclude_flagged" checked> Exclude flagged</label>
+</form>
+{% if not fields %}<p class="note">Add choice or number questions on the Demographics tab to group results.</p><p></p>{% endif %}
+
+<div id="out">
+  <p class="muted" id="status">Loading…</p>
+
+  <section id="overall" hidden>
+    <div class="stats" id="tiles"></div>
+    <div class="card">
+      <div class="row spread"><h2 style="margin:0">Overall ranking</h2>
+        <span class="muted small" id="overall-note"></span></div>
+      <p class="muted small">Score = Bradley-Terry log-strength (0 = average item; +1 ≈ preferred 73% of the time against an average item).
+        Bars show 95% bootstrap intervals over participants; rank range in brackets.</p>
+      <div class="table-wrap"><table class="t" id="rank-table"></table></div>
+      <button class="btn small" id="more" type="button" hidden>Show all</button>
+    </div>
+  </section>
+
+  <section id="grouped" hidden>
+    <div class="card">
+      <h2>Do groups rank items differently?</h2>
+      <p id="lrt"></p>
+      <p class="muted small" id="sizes"></p>
+    </div>
+
+    <div class="card">
+      <div class="row spread"><h2 style="margin:0">Rank by group</h2>
+        <span class="muted small">Cell = rank in that group; colour = score (<span style="color:var(--div-pos)">■</span> above / <span style="color:var(--div-neg)">■</span> below the group’s average item)</span></div>
+      <div class="table-wrap"><table class="t heat" id="heat"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="row spread"><h2 style="margin:0">Rank shifts across groups</h2>
+        <div class="row"><label class="inline small">Items
+          <select id="bump-n"><option value="10">top 10</option><option value="20" selected>top 20</option><option value="movers">20 biggest movers</option><option value="all">all</option></select></label></div></div>
+      <div class="legend" id="bump-legend"></div>
+      <div class="chart" id="bump"></div>
+    </div>
+
+    <div class="card">
+      <div class="row spread"><h2 style="margin:0">Group vs group</h2>
+        <div class="row small"><select id="sx" aria-label="X group"></select><span>vs</span><select id="sy" aria-label="Y group"></select></div></div>
+      <p class="muted small" id="scatter-note"></p>
+      <div class="chart" id="scatter"></div>
+    </div>
+
+    <div class="card">
+      <h2>Rank agreement (Kendall τ)</h2>
+      <p class="muted small">1 = identical order, 0 = unrelated, −1 = reversed.</p>
+      <div class="table-wrap"><table class="t heat" id="tau"></table></div>
+    </div>
+  </section>
+</div>
+<div class="tooltip" id="tip" hidden></div>
+{% endblock %}
+{% block scripts %}<script src="/static/results.js" defer></script>{% endblock %}

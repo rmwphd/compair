@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="app" data-slug="{{ survey.slug }}" data-tie="{{ survey.allow_tie }}" data-skip="{{ survey.allow_skip }}"
+     data-target="{{ survey.pairs_per_participant or '' }}">
+  <div class="progress" {% if not survey.pairs_per_participant %}hidden{% endif %}><div id="bar"></div></div>
+  <div class="progress-label" id="plabel" aria-live="polite"></div>
+  <div class="prompt">{{ survey.prompt }}</div>
+  <div class="choices">
+    <button class="choice" id="left" type="button"><kbd>←</kbd><span class="label"></span><span class="desc"></span></button>
+    <button class="choice" id="right" type="button"><kbd>→</kbd><span class="label"></span><span class="desc"></span></button>
+  </div>
+  <div class="secondary-actions">
+    {% if survey.allow_tie %}<button class="btn" id="tie" type="button">Equal / can’t choose <kbd>↓</kbd></button>{% endif %}
+    {% if survey.allow_skip %}<button class="btn" id="skip" type="button">Skip, don’t know <kbd>S</kbd></button>{% endif %}
+  </div>
+  {% if not survey.pairs_per_participant %}
+  <div class="secondary-actions"><button class="btn link" id="finish" type="button">I’m done, finish</button></div>
+  {% endif %}
+  <p class="keys-hint">Keyboard: <kbd>←</kbd> left · <kbd>→</kbd> right{% if survey.allow_tie %} · <kbd>↓</kbd> equal{% endif %}{% if survey.allow_skip %} · <kbd>S</kbd> skip{% endif %}</p>
+</div>
+<div id="done" class="card done-box" hidden>
+  <h1>Thank you!</h1>
+  <p id="done-msg">Your answers have been saved.</p>
+</div>
+<div id="error" class="errors" hidden></div>
+{% endblock %}
+{% block scripts %}<script src="/static/survey.js" defer></script>{% endblock %}
