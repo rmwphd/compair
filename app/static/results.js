@@ -137,7 +137,7 @@
     const x = (v) => pad + ((v - lo) / (hi - lo || 1)) * (W - 2 * pad);
     const svg = el("svg", { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: "img",
       "aria-label": `score ${fmt(item.theta)}${item.theta_lo !== undefined ? `, 95% interval ${fmt(item.theta_lo)} to ${fmt(item.theta_hi)}` : ""}` });
-    el("line", { x1: x(0), x2: x(0), y1: 2, y2: H - 2, class: "baseline" }, svg);
+    el("line", { x1: x(0), x2: x(0), y1: 2, y2: H - 2, stroke: css("--muted"), "stroke-width": 1, opacity: 0.6 }, svg);
     if (item.theta_lo !== undefined && item.theta_lo !== null)
       el("line", { x1: x(item.theta_lo), x2: x(item.theta_hi), y1: H / 2, y2: H / 2, stroke: css("--s1"),
         "stroke-width": 2, "stroke-linecap": "round", opacity: 0.55 }, svg);
@@ -362,6 +362,23 @@
     el("text", { x: m.l + S / 2, y: m.t + S + 32, "text-anchor": "middle" }, svg, `score in ${trunc(a, 40)}`);
     el("text", { x: 12, y: m.t + S / 2, "text-anchor": "middle", transform: `rotate(-90 12 ${m.t + S / 2})` }, svg, `score in ${trunc(b, 40)}`);
 
+    // Direct labels for the biggest disagreements; try four spots around the dot and
+    // drop the label (tooltip still has it) rather than let two labels collide.
+    const placed = [];
+    const placeLabel = (parent, cx, cy, text) => {
+      const w = text.length * 6.6, h = 14;
+      for (const [dx, dy, anchor] of [[8, -7, "start"], [-8, -7, "end"], [8, 15, "start"], [-8, 15, "end"]]) {
+        const x0 = anchor === "start" ? cx + dx : cx + dx - w;
+        const box = { x0, x1: x0 + w, y0: cy + dy - h + 3, y1: cy + dy + 3 };
+        const inside = box.x0 >= m.l && box.x1 <= m.l + S && box.y0 >= m.t && box.y1 <= m.t + S;
+        const hits = placed.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0);
+        if (inside && !hits) {
+          placed.push(box);
+          el("text", { x: cx + dx, y: cy + dy, "text-anchor": anchor, style: "fill:var(--ink)" }, parent, text);
+          return;
+        }
+      }
+    };
     const byDiff = [...pts].sort((p, q) => Math.abs(q.b.theta - q.a.theta) - Math.abs(p.b.theta - p.a.theta));
     const labelled = new Set(byDiff.slice(0, 5).map((p) => p.a.item_id));
     for (const p of pts) {
@@ -369,8 +386,7 @@
       const gEl = el("g", {}, svg);
       el("circle", { cx, cy, r: 12, fill: "transparent" }, gEl);
       el("circle", { cx, cy, r: 4.5, fill: css("--s1"), stroke: css("--surface"), "stroke-width": 2 }, gEl);
-      if (labelled.has(p.a.item_id))
-        el("text", { x: cx + (cx > m.l + S * 0.7 ? -8 : 8), y: cy - 7, "text-anchor": cx > m.l + S * 0.7 ? "end" : "start", style: "fill:var(--ink)" }, gEl, trunc(p.a.label, 26));
+      if (labelled.has(p.a.item_id)) placeLabel(gEl, cx, cy, trunc(p.a.label, 26));
       hoverable(gEl, p.a.label, () => [
         [`${a}: rank #${p.a.rank}`, fmt(p.a.theta)],
         [`${b}: rank #${p.b.rank}`, fmt(p.b.theta)],
