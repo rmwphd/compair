@@ -115,6 +115,7 @@ This needs port 443 forwarded on your router. Set `SECURE_COOKIES=1`.
 The same image runs anywhere Docker does:
 
 - **VPS** ($4–6/month): `docker compose up -d` with `DATA_PATH=./data`, behind Caddy or the Cloudflare tunnel.
+- **AWS EC2 free tier**: step-by-step in [`deploy/aws/README.md`](deploy/aws/README.md). It uses `t3.micro`, Amazon Linux 2023, and the built-in Caddy HTTPS profile (`docker compose --profile https up -d`) on a free `<ip>.sslip.io` hostname.
 - **Fly.io**: `fly launch` with a 1 GB volume mounted at `/data`. Keep it to **one machine**, because SQLite is single-writer.
 
 GitHub Pages alone can't work: it serves static files only and cannot store answers.

@@ -1,0 +1,8 @@
+# HTTPS reverse proxy for CompAIR. Caddy obtains and renews a free certificate
+# automatically. SITE_ADDRESS comes from .env, e.g.
+#   SITE_ADDRESS=3-91-12-34.sslip.io     (no domain needed: sslip.io resolves to the IP)
+#   SITE_ADDRESS=survey.example.com      (your own domain, A record -> server IP)
+{$SITE_ADDRESS} {
+	encode gzip
+	reverse_proxy compair:8000
+}

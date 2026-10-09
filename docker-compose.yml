@@ -27,3 +27,25 @@ services:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN:-}
     depends_on: [compair]
     profiles: [tunnel]
+
+  # Optional: HTTPS directly on this host (ports 80 + 443 must be reachable), e.g. on a
+  # cloud VM. Set SITE_ADDRESS in .env, then: docker compose --profile https up -d
+  caddy:
+    image: caddy:2
+    container_name: compair-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [compair]
+    profiles: [https]
+
+volumes:
+  caddy_data:
+  caddy_config:
