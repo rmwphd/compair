@@ -1,5 +1,5 @@
 #!/bin/bash
-# EC2 first-boot script for CompAIR on Amazon Linux 2023 (t3.micro / t4g.micro).
+# EC2 first-boot script for compair on Amazon Linux 2023 (t3.micro / t4g.micro).
 # Installs Docker + the compose plugin, adds swap, and clones the repo to /opt/compair.
 # It deliberately does NOT start the app: secrets (.env) are written over SSH afterwards,
 # so they never sit in EC2 user-data (which anyone with ec2:Describe* access can read).

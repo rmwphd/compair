@@ -1,4 +1,4 @@
--- CompAIR schema. Applied idempotently at startup.
+-- compair schema. Applied idempotently at startup.
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS surveys (

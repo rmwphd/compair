@@ -208,7 +208,7 @@ def export_zip(conn: sqlite3.Connection, survey_id: int) -> bytes:
     return out.getvalue()
 
 
-EXPORT_README = """CompAIR export
+EXPORT_README = """compair export
 ==============
 comparisons.csv      one row per pair served. outcome: left|right|tie|skip (empty = served, never answered).
                      Demographic *buckets* for the participant are joined on as extra columns.

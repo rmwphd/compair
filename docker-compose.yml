@@ -1,4 +1,4 @@
-# CompAIR on a Synology NAS (Container Manager → Project → Create → point at this folder),
+# compair on a Synology NAS (Container Manager → Project → Create → point at this folder),
 # or anywhere with `docker compose up -d`.
 services:
   compair:

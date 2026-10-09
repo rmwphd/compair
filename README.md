@@ -1,4 +1,4 @@
-# CompAIR
+# compair
 
 Self-hosted **pairwise comparison surveys**. Build a list of items, and participants answer "which do you prefer, A or B?" (or *equal* / *skip*) for a fixed number of pairs or as many as they like. A non-PII demographics form comes first. You then see how the ranking changes between demographic groups and subgroups.
 

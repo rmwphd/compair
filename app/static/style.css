@@ -1,4 +1,4 @@
-/* CompAIR: one stylesheet for participant and admin pages. Light + dark via tokens. */
+/* compair: one stylesheet for participant and admin pages. Light + dark via tokens. */
 :root {
   color-scheme: light;
   --page: #f9f9f7;

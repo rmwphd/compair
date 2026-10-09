@@ -18,7 +18,7 @@ def code(s):
 
 
 md(r"""
-# CompAIR: deep-dive analysis
+# compair: deep-dive analysis
 
 Companion to the admin dashboard. It uses the same model code (`app/analysis.py`) and adds tests and diagnostics that don't fit a dashboard:
 

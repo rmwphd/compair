@@ -1,4 +1,4 @@
-# CompAIR on AWS EC2 (free tier)
+# compair on AWS EC2 (free tier)
 
 One `t3.micro` running Amazon Linux 2023 with Docker. Caddy serves HTTPS on a free `<ip>.sslip.io` hostname, so no domain is needed. The data is a SQLite file on the instance's disk.
 
@@ -16,7 +16,7 @@ aws ec2 create-key-pair --key-name compair --key-type ed25519 \
 
 # Firewall: SSH from your current IP only; web from anywhere
 VPC=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
-SG=$(aws ec2 create-security-group --group-name compair --description "CompAIR web + SSH" \
+SG=$(aws ec2 create-security-group --group-name compair --description "compair web + SSH" \
   --vpc-id "$VPC" --query GroupId --output text)
 aws ec2 authorize-security-group-ingress --group-id "$SG" --protocol tcp --port 22 --cidr "$MYIP/32"
 aws ec2 authorize-security-group-ingress --group-id "$SG" --ip-permissions \
