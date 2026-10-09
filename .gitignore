@@ -8,3 +8,4 @@ data/
 .env
 .ipynb_checkpoints/
 .pytest_cache/
+deploy/aws/.aws-state
