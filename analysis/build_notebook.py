@@ -47,7 +47,7 @@ from scipy.cluster import hierarchy
 from app import analysis as A
 
 # ---- configure -------------------------------------------------------------
-DB_PATH = Path(os.environ.get("COMPAIR_DB", ROOT / "data" / "compair.db"))  # or set EXPORT_ZIP
+DB_PATH = ROOT / os.environ.get("COMPAIR_DB", "data/compair.db")  # relative to the repo root; or set EXPORT_ZIP
 EXPORT_ZIP = None                         # e.g. ROOT / "demo-20261004-1200.zip"
 SURVEY_SLUG = os.environ.get("COMPAIR_SLUG", "demo")
 EXCLUDE_FLAGGED = True
