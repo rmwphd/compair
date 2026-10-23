@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pytest
 from scipy import stats
 
 from app import analysis as A
@@ -80,3 +81,69 @@ def test_group_order_follows_question_order():
                                               group_theta={"<25": np.zeros(5), "25–34": np.zeros(5), "65+": np.zeros(5)})
     labels = [lab for lab, _, _ in A.split_by(comps, demo, ["group"], {"group": ["<25", "25–34", "65+"]})]
     assert labels == ["<25", "25–34", "65+"]
+
+
+def _heterogeneous(theta, sd_person, n_participants, per_participant, seed):
+    """Each participant has their own scores theta + sd_person * z; pairs drawn uniformly.
+    per_participant: an int, or one count per participant."""
+    rng = np.random.default_rng(seed)
+    m = len(theta)
+    ks = np.broadcast_to(per_participant, n_participants)
+    pairs = np.array([(a, b) for a in range(m) for b in range(a + 1, m)])
+    rows = []
+    for p in range(n_participants):
+        u = theta + sd_person * rng.standard_normal(m)
+        idx = rng.choice(len(pairs), ks[p], replace=False)
+        a, b = pairs[idx, 0], pairs[idx, 1]
+        win = rng.random(ks[p]) < 1 / (1 + np.exp(-(u[a] - u[b])))
+        rows.append(pd.DataFrame({"participant_id": f"p{p}", "item_left": a + 1, "item_right": b + 1,
+                                  "outcome": np.where(win, "left", "right")}))
+    items = pd.DataFrame({"id": range(1, m + 1), "label": [f"item{i}" for i in range(1, m + 1)]})
+    return pd.concat(rows), items
+
+
+def test_assumed_parts_match_closed_form():
+    m, n, k, tau2 = 20, 100, 40, 0.5
+    vp = A.assumed_parts(np.zeros(m), tau2)
+    row = A.plan(vp, n, k).iloc[0]
+    assert row.gap_sd ** 2 == pytest.approx(4 * (m - 1) / (n * k) + 2 * tau2 / n, rel=1e-6)
+    assert row.people_share == pytest.approx((2 * tau2 / n) / row.gap_sd ** 2, rel=1e-6)
+    assert A.plan(vp, n, k, N=2 * n).iloc[0].gap_sd < row.gap_sd  # finite population helps
+
+
+def test_variance_parts_recover_between_participant_variance():
+    theta = np.linspace(-1.5, 1.5, 20)
+    for sd_person, (lo, hi) in [(0.0, (0.0, 0.12)), (1.0, (0.4, 0.8))]:  # tau2 ~ 0.59 on the score scale at sd 1
+        comps, items = _heterogeneous(theta, sd_person, 150, 40, seed=3)
+        r = A.rank_items(comps, items, ties="half", B=300, seed=3, compute_se=True)
+        vp = A.variance_parts(r)
+        assert lo <= vp.tau2 <= hi
+        # At the current design, the projected uncertainty matches the bootstrap's.
+        boot_gap_var = 2 * np.trace(np.cov(r.boot_theta, rowvar=False)) / (len(theta) - 1)
+        now = A.plan(vp, vp.n_participants, vp.n_comparisons / vp.n_participants).iloc[0]
+        sd = A._gap_sd(vp.cov(vp.n_participants, vp.n_comparisons / vp.n_participants))
+        assert (sd[np.triu_indices(len(theta), 1)] ** 2).mean() == pytest.approx(boot_gap_var, rel=0.02)
+        assert 0 < now.kendall_tau < 1
+
+
+def test_uneven_answers_are_a_design_effect_not_disagreement():
+    theta = np.linspace(-1.5, 1.5, 20)
+    ks = np.where(np.arange(150) % 10 == 0, 150, 25)  # a tenth of people answer 6x as much
+    comps, items = _heterogeneous(theta, 1.0, 150, ks, seed=4)
+    vp = A.variance_parts(A.rank_items(comps, items, ties="half", B=300, seed=4, compute_se=True))
+    assert vp.deff == pytest.approx(150 * np.sum(ks**2) / np.sum(ks) ** 2)
+    assert vp.deff > 1.5
+    assert 0.4 <= vp.tau2 <= 0.8  # same people-level spread as the even design
+    k = ks.mean()
+    assert A.plan(vp, 150, k, deff=1.0).iloc[0].gap_sd < A.plan(vp, 150, k).iloc[0].gap_sd
+
+
+def test_plan_more_people_beats_more_pairs():
+    vp = A.assumed_parts(np.random.default_rng(0).normal(0, 1, 30), tau2=0.6)
+    g = A.plan(vp, [60, 120, 240], [80, 40, 20]).set_index(["participants", "pairs_each"])
+    # Same 4800 comparisons, spread over more people -> smaller gaps detectable, better ranking.
+    same_budget = g.loc[[(60, 80), (120, 40), (240, 20)]]
+    assert same_budget.min_gap.is_monotonic_decreasing
+    assert same_budget.kendall_tau.is_monotonic_increasing
+    nb = A.neighbour_power(vp, 120, 40)
+    assert len(nb) == 29 and (nb.gap >= 0).all() and nb.p_right_order.between(0.5, 1).all()

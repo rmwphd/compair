@@ -156,6 +156,7 @@ class Fit:
     n_params: int
     ties: str
     se: np.ndarray | None = None
+    cov: np.ndarray | None = field(default=None, repr=False)  # covariance of the centred theta
 
     def table(self) -> pd.DataFrame:
         df = pd.DataFrame({"item_id": self.item_ids, "theta": self.theta})
@@ -218,12 +219,13 @@ def fit(pd_: PairData, ties: str = "davidson", l2: float = 0.05, compute_se: boo
     ll = _nll_grad(params, pd_, n, ties_eff, l2)[2]
     theta = params[:n] - params[:n].mean()
     nu = float(np.exp(params[n])) if ties_eff == "davidson" else 0.0
-    se = _standard_errors(params, pd_, n, ties_eff, l2) if compute_se else None
-    return Fit(pd_.item_ids, theta, nu, float(ll), n - 1 + (1 if ties_eff == "davidson" else 0), ties_eff, se)
+    cov = _covariance(params, pd_, n, ties_eff, l2) if compute_se else None
+    se = np.sqrt(np.clip(np.diag(cov), 0, None)) if compute_se else None
+    return Fit(pd_.item_ids, theta, nu, float(ll), n - 1 + (1 if ties_eff == "davidson" else 0), ties_eff, se, cov)
 
 
-def _standard_errors(params, pd_, n, ties, l2, h=1e-5):
-    """SEs from the inverse Hessian (finite differences of the analytic gradient)."""
+def _covariance(params, pd_, n, ties, l2, h=1e-5):
+    """Covariance of the centred theta from the inverse Hessian (finite differences of the analytic gradient)."""
     k = len(params)
     H = np.zeros((k, k))
     for c in range(k):
@@ -237,8 +239,7 @@ def _standard_errors(params, pd_, n, ties, l2, h=1e-5):
         cov = np.linalg.pinv(H)
     # Covariance of the centred theta: C = (I - 11'/n) Cov (I - 11'/n)
     P = np.eye(n) - 1.0 / n
-    cov_t = P @ cov[:n, :n] @ P
-    return np.sqrt(np.clip(np.diag(cov_t), 0, None))
+    return P @ cov[:n, :n] @ P
 
 
 def rank_desc(x: np.ndarray) -> np.ndarray:
@@ -258,6 +259,7 @@ class Result:
     n_participants: int
     n_comparisons: int
     boot_theta: np.ndarray | None = None  # (B, n_items)
+    answers_per_participant: np.ndarray | None = None
 
 
 def bootstrap(pd_: PairData, base: Fit, B: int = 200, seed: int = 0, ties: str = "davidson", l2: float = 0.05):
@@ -323,7 +325,8 @@ def rank_items(
     tab = tab.merge(st, on="item_id", how="left").fillna({"n": 0, "wins": 0, "losses": 0, "ties": 0})
     tab = tab.merge(items.rename(columns={"id": "item_id"})[["item_id", "label"]], on="item_id", how="left")
     tab = tab.sort_values(["rank", "label"]).reset_index(drop=True)
-    return Result(f, tab, int(a["participant_id"].nunique()), int(len(a)), boot)
+    return Result(f, tab, int(a["participant_id"].nunique()), int(len(a)), boot,
+                  a.groupby("participant_id").size().to_numpy())
 
 
 # ---------------------------------------------------------------------------
@@ -471,3 +474,145 @@ def quality_flags(comps: pd.DataFrame, min_answers: int = 10, fast_ms: int = 400
         (out["median_ms"] < fast_ms) | (out["left_share"] > side_bias) | (out["left_share"] < 1 - side_bias)
     )
     return out.reset_index()
+
+
+# ---------------------------------------------------------------------------
+# Power and planning
+# ---------------------------------------------------------------------------
+#
+# The sampling covariance of the centred scores has two parts:
+#
+#   comparison noise   unit_cov / (n k)          inverse Fisher information
+#   people sampled     (1 - n/N) tau2 / n * C    C = I - 11'/m
+#
+# where n is participants, k answered pairs each, N the population size (None =
+# infinite) and tau2 how much one participant's scores vary around the
+# population's. With evenly matched items and pairs spread evenly this gives
+#
+#   Var(gap between two items) ~= 4 (m - 1) / (n k)  +  2 tau2 deff (1 - n/N) / n
+#
+# The second term shrinks only with more participants, never with more pairs.
+# deff = n sum(k_p^2) / sum(k_p)^2 is the design effect of unequal answers per
+# participant (1 when everyone answers the same number): heavy responders count
+# for more, so the sample behaves like n / deff people.
+# From a fitted survey the Hessian measures the first part and the participant
+# bootstrap measures both, so tau2 = n (tr(boot cov) - tr(model cov)) / ((m - 1) deff).
+# Everything else is arithmetic: P(two items come out in the right order) is
+# Phi(gap / sd), and expected Kendall tau is the mean of 2 Phi(gap / sd) - 1.
+
+
+@dataclass
+class VarianceParts:
+    item_ids: np.ndarray
+    theta: np.ndarray  # scores treated as the population truth
+    unit_cov: np.ndarray  # comparison-noise covariance x total comparisons
+    tau2: float  # between-participant variance per item, score scale
+    n_participants: int | None = None  # current design, when estimated from data
+    n_comparisons: int | None = None
+    deff: float = 1.0  # current unevenness of answers per participant
+
+    def cov(self, n: float, k: float, N: float | None = None, deff: float | None = None) -> np.ndarray:
+        """deff=None keeps the current unevenness; 1.0 means everyone answers k pairs."""
+        m = len(self.theta)
+        fpc = 1 - n / N if N else 1.0
+        d = self.deff if deff is None else deff
+        return self.unit_cov / (n * k) + fpc * self.tau2 * d / n * (np.eye(m) - 1.0 / m)
+
+
+def variance_parts(result: Result, shrink: bool = True) -> VarianceParts:
+    """Split a survey's uncertainty into comparison noise and participant sampling.
+
+    Needs rank_items(..., compute_se=True, B>0); B of 500 or more keeps tau2 stable.
+    With shrink=True the scores are pulled towards 0 by the share of their spread
+    that is noise, so planning doesn't assume gaps wider than they really are.
+    """
+    f = result.fit
+    if f.cov is None or result.boot_theta is None:
+        raise ValueError("variance_parts needs rank_items(..., compute_se=True) with B > 0")
+    m, n, K = len(f.theta), result.n_participants, result.n_comparisons
+    kp = result.answers_per_participant
+    deff = float(n * np.sum(kp**2) / np.sum(kp) ** 2) if kp is not None else 1.0
+    boot_tr = np.trace(np.cov(result.boot_theta, rowvar=False))
+    tau2 = max(0.0, n * (boot_tr - np.trace(f.cov)) / ((m - 1) * deff))
+    theta = f.theta
+    if shrink and m > 2:
+        theta = theta * max(0.0, 1 - boot_tr / (m - 1) / theta.var(ddof=1))
+    return VarianceParts(f.item_ids, theta, f.cov * K, tau2, n, K, deff)
+
+
+def assumed_parts(theta, tau2: float, item_ids=None) -> VarianceParts:
+    """Variance parts for a survey not yet run: assumed scores and between-participant
+    variance, with pairs spread evenly and no ties."""
+    theta = np.asarray(theta, float) - np.mean(theta)
+    m = len(theta)
+    p = 1 / (1 + np.exp(-(theta[:, None] - theta[None, :])))
+    w = p * (1 - p) / (m * (m - 1) / 2)  # information from one comparison, spread over all pairs
+    np.fill_diagonal(w, 0)
+    C = np.eye(m) - 1.0 / m
+    unit_cov = C @ np.linalg.pinv(np.diag(w.sum(1)) - w) @ C
+    ids = np.arange(m) if item_ids is None else np.asarray(item_ids)
+    return VarianceParts(ids, theta, unit_cov, float(tau2))
+
+
+def _gap_sd(S: np.ndarray) -> np.ndarray:
+    v = np.diag(S)
+    return np.sqrt(np.clip(v[:, None] + v[None, :] - 2 * S, 1e-12, None))
+
+
+def plan(parts: VarianceParts, participants, pairs_each, N: float | None = None,
+         alpha: float = 0.05, power: float = 0.8, deff: float | None = None) -> pd.DataFrame:
+    """Expected ranking accuracy for each (participants, mean pairs per participant) design.
+
+    deff=None assumes answers stay as unevenly spread over participants as now;
+    deff=1.0 assumes everyone answers the same number (e.g. a fixed pair count).
+
+    gap_sd           median SD of the estimated gap between two items
+    min_gap          smallest true gap detected with `power` at two-sided `alpha`
+    min_gap_win_pct  the head-to-head win rate that gap corresponds to (ties ignored)
+    pairs_resolved   share of item pairs whose true gap is at least their min_gap
+    kendall_tau      expected Kendall tau between estimated and population rankings
+    neighbours_ordered  mean P(right order) for items adjacent in the population ranking
+    people_share     share of the gap variance due to which participants were sampled
+    """
+    th, m = parts.theta, len(parts.theta)
+    z = stats.norm.ppf(1 - alpha / 2) + stats.norm.ppf(power)
+    iu = np.triu_indices(m, 1)
+    gap = np.abs(th[:, None] - th[None, :])
+    order = np.argsort(-th)
+    adj = (order[:-1], order[1:])
+    rows = []
+    for n in np.atleast_1d(participants):
+        for k in np.atleast_1d(pairs_each):
+            sd = _gap_sd(parts.cov(n, k, N, deff))
+            p_ok = stats.norm.cdf(gap / sd)
+            scale = (1 - n / N if N else 1.0) * (parts.deff if deff is None else deff)
+            rows.append({
+                "participants": n, "pairs_each": k, "comparisons": n * k,
+                "gap_sd": np.median(sd[iu]),
+                "min_gap": z * np.median(sd[iu]),
+                "min_gap_win_pct": 1 / (1 + np.exp(-z * np.median(sd[iu]))),
+                "pairs_resolved": (gap[iu] >= z * sd[iu]).mean(),
+                "kendall_tau": (2 * p_ok[iu] - 1).mean(),
+                "neighbours_ordered": p_ok[adj].mean(),
+                "people_share": 2 * scale * parts.tau2 / n / (sd[iu] ** 2).mean(),
+            })
+    return pd.DataFrame(rows)
+
+
+def neighbour_power(parts: VarianceParts, participants: float, pairs_each: float,
+                    N: float | None = None, alpha: float = 0.05, deff: float | None = None) -> pd.DataFrame:
+    """For each pair of items adjacent in the ranking: the gap, its SD under the design,
+    P(the pair comes out in the right order) and the power to call the difference."""
+    th = parts.theta
+    order = np.argsort(-th)
+    a, b = order[:-1], order[1:]
+    sd = _gap_sd(parts.cov(participants, pairs_each, N, deff))[a, b]
+    gap = th[a] - th[b]
+    za = stats.norm.ppf(1 - alpha / 2)
+    return pd.DataFrame({
+        "rank": np.arange(1, len(a) + 1),
+        "item_id": parts.item_ids[a], "next_item_id": parts.item_ids[b],
+        "gap": gap, "gap_sd": sd,
+        "p_right_order": stats.norm.cdf(gap / sd),
+        "power": stats.norm.cdf(gap / sd - za) + stats.norm.cdf(-gap / sd - za),
+    })

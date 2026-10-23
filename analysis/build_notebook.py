@@ -27,7 +27,7 @@ Companion to the admin dashboard. It uses the same model code (`app/analysis.py`
 3. **Two-group contrast**: per-item Wald tests with FDR correction
 4. **Subgroup structure**: rank-correlation matrix + clustering of subgroups
 5. **Diagnostics**: position bias, response times, flagged-participant sensitivity
-6. **Planning**: how many more answers for a target precision
+6. **Planning**: power and ranking accuracy for any number of participants × pairs each
 
 Set the source below: either the live SQLite file (copy it from the NAS or use *Backup DB* in the admin) or an *Export ZIP*.
 """)
@@ -49,7 +49,7 @@ from app import analysis as A
 # ---- configure -------------------------------------------------------------
 DB_PATH = Path(os.environ.get("COMPAIR_DB", ROOT / "data" / "compair.db"))  # or set EXPORT_ZIP
 EXPORT_ZIP = None                         # e.g. ROOT / "demo-20261004-1200.zip"
-SURVEY_SLUG = "demo"
+SURVEY_SLUG = os.environ.get("COMPAIR_SLUG", "demo")
 EXCLUDE_FLAGGED = True
 MIN_PARTICIPANTS = 10                     # per group
 BOOT = 200
@@ -62,7 +62,8 @@ if EXPORT_ZIP:
         keep = set(demo.loc[demo.flagged == 0, "participant_id"])
         comps, demo = comps[comps.participant_id.isin(keep)], demo[demo.participant_id.isin(keep)]
 else:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)  # read-only: never touches the backup
+    conn.row_factory = sqlite3.Row
     sid = conn.execute("SELECT id FROM surveys WHERE slug = ?", (SURVEY_SLUG,)).fetchone()[0]
     items, comps, demo = A.load_survey(conn, sid, exclude_flagged=EXCLUDE_FLAGGED)
     from app.reporting import groupable_fields
@@ -217,19 +218,73 @@ if not EXPORT_ZIP:
           f"Kendall τ(with, without) = {stats.kendalltau(with_flagged[common], without[common]).statistic:.3f}")
 """)
 
-md("## 6. Planning: how many answers do I need?\nCI half-widths shrink roughly as 1/√n. From the current bootstrap we estimate the answers *per item* needed for a target half-width, both overall and for the smallest group you want to report.")
+md(r"""
+## 6. Planning: participants × pairs each
+
+The uncertainty in any gap between two scores has two parts:
+
+$$\operatorname{Var}(\text{gap}) \approx \underbrace{\frac{4(m-1)}{n\,k}}_{\text{comparison noise}} + \underbrace{\frac{2\tau^2\,\text{deff}}{n}\Big(1-\frac{n}{N}\Big)}_{\text{which people you sampled}}$$
+
+for $m$ items, $n$ participants answering $k$ pairs each on average, and a population of $N$. $\tau^2$ is how much one person's scores vary around the population's. Only the first part shrinks with more pairs each; both shrink with more people.
+
+**deff** is the design effect of uneven answering: with unlimited pairs, a few people answer far more than others and pull the ranking towards their tastes, so $n$ people behave like $n/\text{deff}$. It's 1 when everyone answers the same number (a fixed pair count does this).
+
+Both parts come from your data: the model's standard errors measure comparison noise, and the bootstrap over participants measures both. Projecting to another design is then arithmetic, not simulation.
+
+* **min gap**: the smallest true score gap you'd detect with 80% power (α = .05), and the head-to-head win rate it corresponds to.
+* **Kendall τ**: expected agreement between the estimated ranking and the one the whole population would give.
+* **neighbours ordered**: average chance that two items adjacent in the population ranking come out in the right order.
+
+Scores are shrunk for noise before planning, so the projections lean slightly cautious.
+""")
 
 code(r"""
-TARGET_HALF_WIDTH = 0.25   # in score units; 0.25 ≈ distinguishes items ~12 pp apart in head-to-head win rate
+POPULATION = None          # e.g. 5000: size of the population you generalise to (None = very large)
+PLAN_PARTICIPANTS = [100, 150, 250, 500, 1000]
+PLAN_PAIRS_EACH = [25, 50, 75, 150]
+PLAN_BOOT = 500            # tau² needs a steadier bootstrap than the CIs do
 
-t = dav.table.dropna(subset=["theta_lo"])
-half_width = ((t.theta_hi - t.theta_lo) / 2).median()
-n_per_item = t.n.median()
-needed = n_per_item * (half_width / TARGET_HALF_WIDTH) ** 2
-print(f"now: median {n_per_item:.0f} answers/item → median CI half-width {half_width:.3f}")
-print(f"for ±{TARGET_HALF_WIDTH}: ≈ {needed:.0f} answers/item "
-      f"≈ {needed * len(t) / 2:.0f} answered comparisons in total (overall), "
-      f"and the same per subgroup you want to report on.")
+plan_fit = A.rank_items(comps, items, ties="davidson", B=PLAN_BOOT, seed=2, compute_se=True)
+vp = A.variance_parts(plan_fit)
+n0, k0 = vp.n_participants, vp.n_comparisons / vp.n_participants
+now = A.plan(vp, n0, k0, N=POPULATION).iloc[0]
+print(f"now: {n0} participants × {k0:.0f} answered pairs each on average ({vp.n_comparisons} comparisons)")
+print(f"uneven answering: deff = {vp.deff:.2f}, so they count like {n0 / vp.deff:.0f} people")
+print(f"between-participant variance τ² = {vp.tau2:.3f}; sampled people are {now.people_share:.0%} of the uncertainty")
+print(f"min detectable gap {now.min_gap:.2f} (≈ {now.min_gap_win_pct:.0%} head-to-head) · "
+      f"expected Kendall τ {now.kendall_tau:.3f} · neighbours ordered {now.neighbours_ordered:.0%} · "
+      f"pairs resolved {now.pairs_resolved:.0%}")
+
+for deff, name in [(None, "answers as uneven as now"), (1.0, "everyone answers the same number")]:
+    grid = A.plan(vp, PLAN_PARTICIPANTS, PLAN_PAIRS_EACH, N=POPULATION, deff=deff)
+    for col, fmt in [("min_gap_win_pct", "{:.0%}"), ("kendall_tau", "{:.3f}"), ("pairs_resolved", "{:.0%}")]:
+        print(f"\n{name} · {col}  (rows: participants, columns: pairs each)")
+        display(grid.pivot(index="participants", columns="pairs_each", values=col).style.format(fmt))
+""")
+
+code(r"""
+ns = np.unique(np.geomspace(max(n0 // 2, 10), 2000, 40).astype(int))
+fig, ax = plt.subplots(figsize=(7, 4))
+for color, k in zip(SERIES, (25, 75, 150)):
+    g = A.plan(vp, ns, k, N=POPULATION)
+    ax.plot(g.participants, g.kendall_tau, color=color, lw=2, label=f"{k} pairs each")
+g = A.plan(vp, ns, 1e9, N=POPULATION)
+ax.plot(g.participants, g.kendall_tau, color="#8a897f", lw=1.5, ls="--", label="unlimited pairs each")
+ax.plot([n0], [now.kendall_tau], "o", color="#1f1e1b", ms=7, mec="white", mew=1.5, label="now")
+ax.set_xscale("log"); ax.set_xticks([t for t in (20, 50, 100, 200, 500, 1000, 2000) if ns[0] <= t <= ns[-1]])
+ax.xaxis.set_major_formatter("{x:.0f}"); ax.xaxis.set_minor_formatter(""); ax.set_xlabel("participants"); ax.set_ylabel("expected Kendall τ vs population")
+ax.legend(frameon=False); plt.show()
+""")
+
+code(r"""
+# Which neighbours can you tell apart? Now vs a target design.
+TARGET = (250, 75)  # (participants, pairs each)
+lab = items.set_index("id").label
+nb = A.neighbour_power(vp, n0, k0, N=POPULATION).merge(
+    A.neighbour_power(vp, *TARGET, N=POPULATION)[["rank", "p_right_order", "power"]],
+    on="rank", suffixes=("_now", "_target"))
+nb.insert(1, "item", nb.item_id.map(lab)); nb.insert(2, "next", nb.next_item_id.map(lab))
+nb.drop(columns=["item_id", "next_item_id"]).round(3)
 """)
 
 nb = {
